@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -9,19 +10,26 @@ import (
 
 	otecmd "github.com/openshift-eng/openshift-tests-extension/pkg/cmd"
 	oteextension "github.com/openshift-eng/openshift-tests-extension/pkg/extension"
+	g "github.com/openshift-eng/openshift-tests-extension/pkg/ginkgo"
 	"github.com/openshift/openshift-apiserver/pkg/version"
 
 	"k8s.io/klog/v2"
 )
 
 func main() {
-	command := newOperatorTestCommand(context.Background())
+	command, err := newOperatorTestCommand(context.Background())
+	if err != nil {
+		klog.Fatal(err)
+	}
 	code := cli.Run(command)
 	os.Exit(code)
 }
 
-func newOperatorTestCommand(ctx context.Context) *cobra.Command {
-	registry := prepareOperatorTestsRegistry()
+func newOperatorTestCommand(ctx context.Context) (*cobra.Command, error) {
+	registry, err := prepareOperatorTestsRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare operator tests registry: %w", err)
+	}
 
 	cmd := &cobra.Command{
 		Use:   "openshift-apiserver-tests-ext",
@@ -42,13 +50,20 @@ func newOperatorTestCommand(ctx context.Context) *cobra.Command {
 
 	cmd.AddCommand(otecmd.DefaultExtensionCommands(registry)...)
 
-	return cmd
+	return cmd, nil
 }
 
-func prepareOperatorTestsRegistry() *oteextension.Registry {
+func prepareOperatorTestsRegistry() (*oteextension.Registry, error) {
 	registry := oteextension.NewRegistry()
 	extension := oteextension.NewExtension("openshift", "payload", "openshift-apiserver")
 
+	specs, err := g.BuildExtensionTestSpecsFromOpenShiftGinkgoSuite()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build extension test specs from ginkgo: %w", err)
+	}
+
+	extension.AddSpecs(specs)
 	registry.Register(extension)
-	return registry
+
+	return registry, nil
 }
